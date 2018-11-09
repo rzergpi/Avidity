@@ -19,8 +19,15 @@ Exp,Samples,M.09,M.18,M.375,M.75,M1.5,M3
 14,B03,0.111,0.127,0.108,0.101,0.077,0.057
 
 
+The first row must have "Exp, Samples," and the names given to the concentrations of the chaotropic agent, in this cas it is:
+"M.09,M.18,M.375,M.75,M1.5,M3".
+
 The second row should always have the different concentrations of a chaotropic agent (in this case GuHCl).
+
 First column has the experiment identifiers. If more than 2 experiments are loaded certain parts of the code will be executed.
+
 Second column has the Sample identifiers. Two or more repetitions are required for each sample to check repeatability of sample replicates.
+
 Third column and beyond must have the corresponding chaotropic agent molar concentration expressed as logarithm (base 10) in the second row and all values for each sample replicate in the appropiate rows.
+
 The set of data shown will work with the code, if a demonstration is needed.
