@@ -1,7 +1,7 @@
 ---
-title: "Project_Zegpi_STAT7250_v14"
-author: "Ramon Zegpi"
-date: "October 29, 2018"
+title: "Project_Zergpi_STAT7250_v14"
+author: "rzergpi"
+date: "01/01/01"
 output:
   pdf_document: default
   html_document: default
@@ -10,9 +10,6 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
-
-COMPARE AUCS btw experiments
 
 
 Loading packages
@@ -27,7 +24,7 @@ library(nplr)
 library(rptR)
 ```
 
-Loading data. Needs to be checked again.
+Loading data. 
 ```{r}
 
 #Make an R code to ask for the file (yes you can)
