@@ -1,0 +1,509 @@
+---
+title: "Project_Zegpi_STAT7250_v14"
+author: "Ramon Zegpi"
+date: "October 29, 2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+COMPARE AUCS btw experiments
+
+
+Loading packages
+  nplr (n-parametric logistical regression)
+  rptR (repeatability)
+
+
+```{r}
+install.packages("nplr")
+install.packages("rptR")
+library(nplr)
+library(rptR)
+```
+
+Loading data. Needs to be checked again.
+```{r}
+
+#Make an R code to ask for the file (yes you can)
+avdexp <- read.csv(file="/home/rzegpi/Documents/STAT7250/avdExp.csv", 
+                   header=TRUE, sep=",", as.is = TRUE)
+
+#IDS of the different experiments if any, 
+expids <- as.vector(avdexp[-1,1])
+expids2 <- split(avdexp[-1,1], expids)
+#Unique values for exp ids
+#Check if code wroks for only one experiment
+expnam <- unique(expids)
+
+#samples in each experiment
+samples <- split(avdexp[-1,2], expids)
+
+#all names of samples
+samplenams <- vector(mode="list")
+for(i in 1:length(samples)){
+  samples[[i]] <- factor(samples[[i]])
+  samplenams[[i]] <- unique(samples[[i]])
+  samplenams[[i]] <- factor(samplenams[[i]])
+}
+
+#GuHCl concentrations in number format
+concentrations <- as.numeric(avdexp[1,3:ncol(avdexp)])
+
+#Names of the concentrations
+conceNames <- colnames(avdexp[0,c(-1,-2)])
+conceNames <- factor(conceNames)
+
+#now you need the opticdensity values for each AND
+#their corresponding concentration values for each experiment 
+#(vector of vectors or dataframe)
+#the length of the vector expnam is the number of experiments
+#now you need the data from each exp in the corresponding place 
+#into opden
+opden <- split(avdexp[-1,-1], expids)
+
+#removed expIDS, you need to separate by samples now inside opden
+#and put them in opdensamp
+opdensamp <- vector(mode="list")
+for(i in 1:length(opden)){
+  opdensamp[[i]] <- split(opden[[i]], samples[[i]])
+}
+
+#in case you need to remove the col and rownames, use:
+for(i in 1:length(opdensamp)){
+  for(k in 1:length(opdensamp[[i]])){
+    opdensamp[[i]][[k]] <- opdensamp[[i]][[k]][,-1]
+    colnames(opdensamp[[i]][[k]]) <- NULL
+    rownames(opdensamp[[i]][[k]]) <- NULL 
+    #we need the values in proportions, convertToProp works
+    for(l in 1:nrow(opdensamp[[i]][[k]])){
+      opdensamp[[i]][[k]][l,] <- 
+        convertToProp(unlist(opdensamp[[i]][[k]][l,]), T0=0)
+    }
+  }
+}
+#now we need an identical dataframe with the concentrations 
+#to match afterwards in the nplr and rpt functions
+#we make conreps
+conreps <- opdensamp #weird move to get the correct dimensions, IMPROVE?
+#conrepnumbs has the amount of repetitions for each sample
+conrepnumb <- vector(mode="list")
+
+#get a list or array with number of columns for each repetition
+for (i in 1:length(opdensamp)){
+  conrepnumb[[i]] <- vector(mode = "list")
+  for (k in 1:length(opdensamp[[i]])){
+    for(l in 1:nrow(opdensamp[[i]][[k]])){
+    conreps[[i]][[k]][l,] <- as.numeric(concentrations)
+    }
+    conrepnumb[[i]][[k]] <- l
+  }
+}
+#all values are now in opdensamp and conreps
+#to get the names of the lists use names(conreps[[1]][1])
+
+```
+
+
+
+```{r}
+#nedd to detect problems such as negative bottom asymptote. 
+#Report these as problematic, that did not converge as expected. 
+#Does goodness of fit needs to be over 0.90?
+nparr <- vector(mode='list')
+AUC <- vector(mode='list')
+for (i in 1:length(opdensamp)){
+  nparr[[i]] <- vector(mode="list")
+  AUC[[i]] <- vector(mode='list')
+  for(k in 1:length(opdensamp[[i]])){
+    nparr[[i]][[k]] <- nplr(x=unlist(conreps[[i]][[k]]), 
+                            y=unlist(opdensamp[[i]][[k]]), 
+                            useLog = FALSE,
+                            npars = 5,silent = TRUE, LPweight = 0)
+    AUC[[i]][[k]] <- nparr[[i]][[k]]@AUC$trapezoid
+  }
+}
+#str(nparr[[1]][[2]])
+
+
+nparr[[1]][[1]]
+
+```
+
+
+
+
+
+Indicating which models may have problems. Look for a better way.
+
+```{r}
+problems <- vector(mode="list", length=length(expnam))
+for(i in 1:length(nparr)){
+  problems[[i]] <- vector(mode="list")
+  for(k in 1:length(nparr[[i]])){
+    if((nparr[[i]][[k]]@pars$bottom<(-1))|(nparr[[i]][[k]]@pars$top>1.5)){
+      problems[[i]][[k]] <- paste("The model in experiment: ", 
+                                  as.character(expids2[[i]][[k]]),
+                                  " and sample: ",
+                                  as.character(samplenams[[i]][[k]]), 
+                                  " may be problematic.")
+    }
+  }
+}
+
+
+for(i in 1:length(problems)){
+  if(length(problems[[i]])>0){
+    print(Filter(Negate(is.null), problems[[i]]))    
+  }else{
+    print(paste("No problems found in experiment ", as.character(expnam[[i]])))
+  }
+}
+
+
+
+```
+
+
+Calculating EC50 for all models
+```{r}
+#this finds ec50 according to odforEC50 
+#OD for EC50 is calculated from real values and NOT FROM THE BOTTOM ASYMPTOTE
+#YOU NEED TO CHECK THIS, BECAUSE OF THE BOTTOM VALUE MAY BE WRONG
+ec50 <- vector(mode = 'list')
+odforEC50 <- vector(mode = 'list')
+for (i in 1:length(nparr)){
+  odforEC50[[i]] <- vector(mode="list")
+  ec50[[i]] <- vector(mode="list")
+  for(k in 1:length(nparr[[i]])){
+    odforEC50[[i]][[k]] <- (min(nparr[[i]][[k]]@yCurve)+
+                              max(nparr[[i]][[k]]@yCurve))/2
+    ec50[[i]][[k]] <- getEstimates(nparr[[i]][[k]], 
+                                   targets = odforEC50[[i]][[k]])[[3]]
+  }
+}
+
+```
+
+
+
+
+```{r}
+plot(nparr[[1]][[1]], main="Sample 1", 
+     pcol = "aquamarine1", lcol = "red", ylab="proportion of OD", 
+     xlab="log[GuHCL]", showCI=FALSE, showGOF = FALSE)
+points(ec50[[1]][[1]], odforEC50[[1]][[1]], pch="X", cex=3)
+text(ec50[[1]][[1]]+0.1, odforEC50[[1]][[1]]+0.3, 
+     paste("Avidity index= ", as.character(ec50[[1]][[1]])))
+```
+
+
+Plotting EC50 over the models (blue triangular shape)
+
+```{r}
+layout(matrix(c(1,0,2,0), 2, 2, byrow = TRUE), widths=c(3,3), heights=c(3,3))
+for(i in 1:length(nparr)){
+  overlay(modelList = nparr[[i]],showLegend = FALSE,
+          xlim=c(min(as.numeric(concentrations)), 
+                 max(as.numeric(concentrations))), 
+          ylim=c(0,1.1), ylab="proportion of OD", 
+          xlab="log[GuHCL]", main=paste("Experiment: ", 
+                                        expnam[[i]]),
+          Cols=rainbow(length(nparr[[i]])))
+  points(ec50[[i]], odforEC50[[i]], pch=6, col=rainbow(length(ec50[[i]])))
+}
+
+```
+
+print EC50s in table and column versions
+present plots like a box
+
+```{r}
+#plot(ec50y, ec50, pch=8, col="blue")
+#YOU NEED TO SEPARATE THEM BY EXPERIMENT
+for(i in 1:length(expnam)){
+  print(paste("EC50 values for experiment ", as.character(expnam[i]), "are"))
+  print(unlist(ec50[[i]]))
+}
+#Make a plot
+listec50 <- vector(mode="list")
+for(i in 1:length(ec50)){
+  listec50[[i]] <- unlist(ec50[[i]])
+}
+boxplot(listec50, names=expnam, main="EC50 values")
+```
+
+```{r}
+#AUCs values plotted by experiment
+listAUC <- vector(mode="list")
+for(i in 1:length(AUC)){
+  listAUC[[i]] <- unlist(AUC[[i]])
+}
+boxplot(listAUC, names=expnam, main="AUC values")
+```
+
+
+Trying to get the AUCs differences (if you need them)
+
+
+```{r}
+#separate the models one for each repetition inside a sample data
+#3d matrix of separate models
+nparrs <- vector(mode="list", length=length(opdensamp))
+#store all AUCs and compare them
+AUCs <- vector(mode="list", length=length(opdensamp))
+AUCmaxs <-  vector(mode="list", length=length(opdensamp))
+AUCmins <-  vector(mode="list", length=length(opdensamp))
+for(i in 1:length(nparrs)){
+  nparrs[[i]] <- vector(mode="list", length=length(opdensamp[[i]]))
+  AUCs[[i]] <- vector(mode="list", length=length(opdensamp[[i]]))
+  AUCmaxs[[i]] <- vector(mode="list", length=length(opdensamp[[i]]))
+  AUCmins[[i]] <- vector(mode="list", length=length(opdensamp[[i]]))
+  for(k in 1:length(nparrs[[i]])){
+    nparrs[[i]][[k]] <- 
+      vector(mode="list", length=nrow(opdensamp[[i]][[k]]))
+    AUCs[[i]][[k]] <- 
+      vector(mode="list", length=nrow(opdensamp[[i]][[k]]))
+    AUCmaxs[[i]][[k]] <- 
+      vector(mode="numeric", length=nrow(opdensamp[[i]][[k]]))
+    AUCmins[[i]][[k]] <- 
+      vector(mode="numeric", length=nrow(opdensamp[[i]][[k]]))
+    for(l in 1:length(nparrs[[i]][[k]])){
+      nparrs[[i]][[k]][[l]] <- nplr(x=unlist(conreps[[i]][[k]][l,]), 
+                                    y=unlist(opdensamp[[i]][[k]][l,]),
+                                    useLog = FALSE, 
+                                    npars = 5, silent = TRUE, LPweight = 0)
+      AUCs[[i]][[k]][[l]] <- nparrs[[i]][[k]][[l]]@AUC$trapezoid
+    }
+    AUCmaxs[[i]][[k]] <- max(unlist(AUCs[[i]][[k]]))
+    AUCmins[[i]][[k]] <- min(unlist(AUCs[[i]][[k]]))
+  }
+}
+#All AUCs contained
+```
+
+Repeatability. Seems to be working.
+
+```{r}
+#NOT NEEDED, REMOVE
+#this would need to be reproducibility!!
+
+#THIS IS REPEATABILITY between EXPERIMENTS, 
+#IT IS PROBABLY NORMAL FOR IT TO BE 0 
+#SINCE THE EXPERIMENTS DIFFER IN MANY ASPECTS
+#this is for as many exps as defined in the file, 
+#not couples of experiments or certain experiments
+#checking there is more than 1 experiment
+if(length(expnam)>1){
+  exprep <- data.frame("A"=unlist(AUC), "B"=expids)
+  btwExps <- rpt(A~(1|B), grname="B", data=exprep, datatype = "Gaussian", 
+                 nboot=100, npermut=100)
+}else{
+  print("Only one experiment loaded, 
+        repeatabilities between experiments cannot be computed")
+}
+
+
+btwExps
+```
+Repeatability between sample replicates (same conditions)
+```{r}
+#NOW CHECKING REPEATABILITY BETWEEN SAMPLE REPS
+#repeatability for ll concentrations repetitions inside a experiment 
+#use for presentation maybe
+#this means that repetitions in the same plate are useless?
+#AUCs tell a different story (upper chunk)
+#check concentrations, they seem to differ.
+#using longer times would decrease variability, rigth????
+
+#No need to check if there is more than one experiment here
+if(length(unlist(samples))>length(unlist(samplenams))){
+  concerep <- data.frame("A"=unlist(AUCs), 
+                         "B"=as.character(unlist(samples)))
+  btwcons <- rpt(A~(1|B), grname="B", data=concerep, 
+                 datatype = "Gaussian", nboot=100, npermut=100)
+  btwcons
+}else{
+  print("There are not enough repetitions for each sample to calculate repeatability")
+}
+
+```
+
+
+
+```{r}
+#check repeatability for 5-lnpr,4-lnpr and 3-lnpr and polynomial.
+```
+
+
+
+```{r}
+#Now check which points add more to the variability
+#Change the values by 0.02 10 times (up and down, if possible) 
+#and store the values of difference (of AUC) and plot them 
+#for each concentration for each sample
+
+ticvals <- seq(-0.2, 0.2, 0.04)
+updownsamps <- opdensamp
+
+#Changing one point at a time, 
+#using 11 values (-0.2 to 0.2) for each concentration
+#in each model for each sample in each experiment
+updownnparr <- vector(mode='list')
+updownAUC <- vector(mode='list')
+updownec50<- vector(mode='list')
+updownODec50<- vector(mode='list')
+for (i in 1:length(opdensamp)){
+  updownnparr[[i]] <- vector(mode="list")
+  updownAUC[[i]] <- vector(mode='list')
+  updownec50[[i]] <- vector(mode='list')
+  updownODec50[[i]] <- vector(mode='list')
+  for(k in 1:length(opdensamp[[i]])){
+    updownnparr[[i]][[k]] <- vector(mode="list")
+    updownAUC[[i]][[k]] <- vector(mode="list")
+    updownec50[[i]][[k]] <- vector(mode='list')
+    updownODec50[[i]][[k]] <- vector(mode='list')
+    for(l in 1:length(opdensamp[[i]][[k]])){
+      updownnparr[[i]][[k]][[l]] <- vector(mode="list")
+      updownAUC[[i]][[k]][[l]] <- vector(mode="list")
+      updownec50[[i]][[k]][[l]] <- vector(mode="list")
+      updownODec50[[i]][[k]][[l]] <- vector(mode="list")
+      for(j in 1:length(ticvals)){
+        updownsamps[[i]][[k]][[l]] <- opdensamp[[i]][[k]][[l]]+ticvals[j]
+        updownnparr[[i]][[k]][[l]][[j]] <- 
+          nplr(x=unlist(conreps[[i]][[k]]), y=(unlist(updownsamps[[i]][[k]])),
+               useLog = FALSE,npars = 5,silent = TRUE, LPweight = 0)
+        updownAUC[[i]][[k]][[l]][[j]] <- updownnparr[[i]][[k]][[l]][[j]]@AUC$trapezoid
+        updownODec50[[i]][[k]][[l]][[j]] <- 
+          (min(updownnparr[[i]][[k]][[l]][[j]]@yCurve)+
+             max(updownnparr[[i]][[k]][[l]][[j]]@yCurve))/2
+        updownec50[[i]][[k]][[l]][[j]] <- 
+          getEstimates(updownnparr[[i]][[k]][[l]][[j]], 
+                       targets = updownODec50[[i]][[k]][[l]][[j]])[[3]]
+        updownsamps[[i]][[k]][[l]] <- opdensamp[[i]][[k]][[l]]
+      }
+    }
+  }
+}
+
+```
+
+```{r}
+#printing the proportions
+#Do you need the differences?
+boxplot(unlist(updownAUC[[1]][[1]][[1]])/AUC[[1]][[1]], 
+        unlist(updownAUC[[1]][[1]][[2]])/AUC[[1]][[1]], 
+        unlist(updownAUC[[1]][[1]][[3]])/AUC[[1]][[1]], 
+        unlist(updownAUC[[1]][[1]][[4]])/AUC[[1]][[1]], 
+        unlist(updownAUC[[1]][[1]][[5]])/AUC[[1]][[1]], 
+        unlist(updownAUC[[1]][[1]][[6]])/AUC[[1]][[1]], 
+        names = as.character(conceNames), main="AUC variation of first model")
+```
+
+GuHCl concentration of 0.75 molar seems to be the most important.
+The results for AUC show more sensibility around that value.
+
+
+```{r}
+layout(matrix(c(1,2,3,0), 2, 2, byrow = TRUE), widths=c(3,3), heights=c(3,3))
+overlay(modelList=updownnparr[[1]][[1]][[4]], 
+        showLegend = FALSE,
+        xlim=c(min(as.numeric(concentrations)),
+               max(as.numeric(concentrations))),
+        ylim=c(0,1.1), ylab="proportion of OD", 
+        xlab="log([GuHCL])", 
+        main=as.character(conceNames[[4]]))
+overlay(modelList=updownnparr[[1]][[1]][[5]], 
+        showLegend = FALSE, 
+        xlim=c(min(as.numeric(concentrations)),
+               max(as.numeric(concentrations))), 
+        ylim=c(0,1.1), ylab="proportion of OD", 
+        xlab="log([GuHCL])", 
+        main=as.character(conceNames[[5]]))
+overlay(modelList=updownnparr[[1]][[1]][[6]], 
+        showLegend = FALSE, 
+        xlim=c(min(as.numeric(concentrations)),
+               max(as.numeric(concentrations))), 
+        ylim=c(0,1.1), ylab="proportion of OD", 
+        xlab="log([GuHCL])", 
+        main=as.character(conceNames[[6]]))
+```
+
+
+For the first sample in the first experiment 0.75 molar of GuHCl seems important
+To see if EC50 is similar:
+
+
+```{r}
+#get the EC50s for each rep in updownnparr and plot them
+boxplot(unlist(updownec50[[1]][[1]][[1]])/ec50[[1]][[1]], 
+        unlist(updownec50[[1]][[1]][[2]])/ec50[[1]][[1]], 
+        unlist(updownec50[[1]][[1]][[3]])/ec50[[1]][[1]], 
+        unlist(updownec50[[1]][[1]][[4]])/ec50[[1]][[1]], 
+        unlist(updownec50[[1]][[1]][[5]])/ec50[[1]][[1]], 
+        unlist(updownec50[[1]][[1]][[6]])/ec50[[1]][[1]], 
+        names = as.character(conceNames), 
+        main="EC50 variation of first model")
+```
+
+
+It seems to be similar, 0.75 molar concentration of GuHCl has 
+the more variability.
+I will see standard deviations of AUCs across all experiments for each 
+concentration from the simulated data:
+
+
+```{r}
+#get all stdevs for each concentration accross all experiments reps
+stdevConAUC <- vector(mode="list", length=length(concentrations))
+for(g in 1:length(stdevConAUC)){
+  for(i in 1:length(updownAUC)){
+    for(j in 1:length(updownAUC[[i]])){
+      for(l in 1:length(updownAUC[[i]][[j]])){
+        if(g==l){
+          stdevConAUC[[l]] <- c(stdevConAUC[[l]], 
+                                sd(unlist(updownAUC[[i]][[j]][[l]])))
+        }
+      }
+    }
+  }
+}
+
+boxplot(stdevConAUC, names=as.character(conceNames),
+        main="Standard deviations of AUC")
+
+```
+
+Again the same tendency.
+
+Checking for EC50:
+
+
+```{r}
+stdevConec50 <- vector(mode="list", length=length(concentrations))
+for(g in 1:length(stdevConec50)){
+  for(i in 1:length(updownec50)){
+    for(j in 1:length(updownec50[[i]])){
+      for(l in 1:length(updownec50[[i]][[j]])){
+        if(g==l){
+          stdevConec50[[l]] <- c(stdevConec50[[l]], 
+                                 sd(unlist(updownec50[[i]][[j]][[l]])))
+        }
+      }
+    }
+  }
+}
+
+boxplot(stdevConec50, names=as.character(conceNames),
+        main="Standard deviations of EC50", cex.main=2)
+```
+
+Same tendency.
+
+
+
