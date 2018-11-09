@@ -1,6 +1,7 @@
 # Avidity
-Avidity index and repeatability between sample replicates
-The code needs a CSV file with the format seen below
+Avidity index and repeatability between sample replicates.
+
+The code needs a CSV file with the format seen below.
 
 Exp,Samples,M.09,M.18,M.375,M.75,M1.5,M3
 0,GuHCl,-1.028028724,-0.726998728,-0.425968732,-0.124938737,0.176091259,0.477121255
