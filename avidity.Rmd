@@ -9,7 +9,7 @@ output:
 
 ```{r setup, include=FALSE}
 if (!require('knitr')) install.packages("knitr")
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, fig.width=8, fig.height=11)#DEFINE SIZE OF FIGURES
 ```
 
 Loading packages
@@ -17,15 +17,19 @@ Loading packages
   rptR (repeatability)
 
 ```{r echo = T, warning=FALSE, message=FALSE}
+if (!require('writexl')) install.packages("writexl")
 if (!require('nplr')) install.packages("nplr")
 if (!require('rptR')) install.packages("rptR")
+if (!require('reticulate')) install.packages("reticulate")
+if (!require('Bolstad2')) install.packages("Bolstad2")
 #if (!require('ggplot2')) install.packages("ggplot2")
-
+library(writexl)
 library(nplr)
 library(rptR)
 #library(ggplot2)
 library(tools)
-
+library(reticulate)
+library(Bolstad2)
 ```
 
 
@@ -51,8 +55,10 @@ expids2 <- split(avdexp[-1,1], expids)
 concentrations <- data.frame()
 conce <- as.numeric(avdexp[1,-2:-1]) #to get the right numbers
 
+
 for(i in 1:length(avdexp$Samples)){
-  avdexp[i,-2:-1] <- convertToProp(avdexp[i,-2:-1], T0 = 0)
+  avdexp[i,-2:-1] <- convertToProp(avdexp[i,-2:-1])
+  #, T0=0
 }
 avdexp <- avdexp[-1,]
 #To have a definite order in groups
@@ -72,13 +78,25 @@ for(i in 1:length(concentrations)){
     }
   }
 }
+sampPoly <- splitExps
+for(h in 1:length(splitExps)){
+  for (g in 1:length(splitExps[[h]])){
+      sampPoly[[h]][[g]] <- rowSums(splitExps[[h]][[g]],)
+  }
+}
+
+
+
+
+
+
 
 
 #now use a for for 3, 4 and 5 parametric
 #for group number
 #for sample number
 
-allmodels <- data.frame(param=integer(), exper=character(), samp=character(), ec50val=double(), ec50top=double(), ec50bot=double(), gof=double(), bottom=double(), top=double(), xmid=double(), scal=double(), s=double(), stringsAsFactors = FALSE)
+allmodels <- data.frame(param=integer(), exper=character(), samp=character(), ec50val=double(), ec50top=double(), ec50bot=double(), gof=double(), bottom=double(), top=double(), xmid=double(), scal=double(), s=double(), AUC=double(), stringsAsFactors = FALSE)
 index <- 1
 vectormodel <- vector(mode="list")
 for(l in 3:5){
@@ -88,7 +106,7 @@ for(l in 3:5){
     for(k in 1:length(splitExps[[i]])){
      try(asdf <- nplr(x=as.numeric(unlist(concentrations[[i]][[k]])), y=as.numeric(unlist(splitExps[[i]][[k]])), useLog = TRUE, npars = l,silent = TRUE, LPweight = 0), silent = TRUE)
       vectormodel[[l-2]][[i]][[k]] <- asdf
-      allmodels[index,] <- c(l, names(splitExps)[[i]], names(splitExps[[i]])[[k]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[3]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[4]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[2]], asdf@goodness$gof, asdf@pars$bottom, asdf@pars$top, asdf@pars$xmid, asdf@pars$scal, asdf@pars$s)
+      allmodels[index,] <- c(l, names(splitExps)[[i]], names(splitExps[[i]])[[k]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[3]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[4]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[2]], asdf@goodness$gof, asdf@pars$bottom, asdf@pars$top, asdf@pars$xmid, asdf@pars$scal, asdf@pars$s, asdf@AUC$trapezoid)
       index=index+1
     }
   }  
@@ -100,22 +118,38 @@ for(l in 3:5){
 #
 par(mar=c(8,8,8,8))
 boxplot(as.numeric(subset(allmodels, param==3)$ec50val)~subset(allmodels, param==3)$exper, main="Avidity index, 3 plm", xlab = "Groups", ylab = "Avidity index")
-boxplot(as.numeric(subset(allmodels, param==4)$ec50val)~subset(allmodels, param==4)$exper, main="Avidity index4, plm", xlab = "Groups", ylab = "Avidity index")
+boxplot(as.numeric(subset(allmodels, param==4)$ec50val)~subset(allmodels, param==4)$exper, main="Avidity index, 4 plm", xlab = "Groups", ylab = "Avidity index")
 boxplot(as.numeric(subset(allmodels, param==5)$ec50val)~subset(allmodels, param==5)$exper, main=chaos, xlab = "Groups", ylab = "Avidity index")
 
 
 
 
 ```
-
-
+Print table with EC50
 
 ```{r}
+resp_sav <- getwd()
+print(allmodels, digits =2)
+#to_save <- choose.dir(getwd(), "Choose a suitable folder")
+#trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+#setwd(to_save)
+print(paste("Results can be found in:", resp_sav))
+write.csv(allmodels, "Results.csv")
+
+```
+
+
+
+Goodness of fit analyses
+```{r}
 #Make analysis of GoF (happy 5 param)
-par(mar=c(7,7,7,7))
-hist(as.numeric(subset(allmodels, param==3)$gof), main = paste("3 plm", chaos), xlab = "Goodness of fit")
-hist(as.numeric(subset(allmodels, param==4)$gof), main = paste("4 plm ", chaos), xlab = "Goodness of fit")
-hist(as.numeric(subset(allmodels, param==5)$gof), main = paste("5 plm ", chaos), xlab = "Goodness of fit")
+par(mar=c(10,10,10,10), mgp=c(5,2,0))
+nmain <- 5
+nlab <- 3
+nax <- 3
+hist(as.numeric(subset(allmodels, param==3)$gof), main = paste("3 plm", chaos), xlab = "Goodness of fit", xlim=(c(0,1)), ylim = c(0, 30), cex.main=nmain, cex.lab= nlab, cex.axis=nax)
+hist(as.numeric(subset(allmodels, param==4)$gof), main = paste("4 plm ", chaos), xlab = "Goodness of fit", xlim=(c(0,1)), ylim = c(0, 30), cex.main=nmain, cex.lab= nlab, cex.axis=nax)
+hist(as.numeric(subset(allmodels, param==5)$gof), main = paste("5 plm ", chaos), xlab = "Goodness of fit", xlim=(c(0,1)), ylim = c(0, 30), cex.main=nmain, cex.lab= nlab, cex.axis=nax)
 #hist GoF
 ```
 
@@ -139,17 +173,19 @@ print EC50s in table and column versions
 
 ```
 
+I beieve you are not properly measuring repeatability
 
-Repeatability between sample replicates (same conditions) only for 5 parametric
+
+Repeatability between sample replicates (same conditions) only for 5 parametric nplr
 ```{r echo = T, warning=FALSE, message=FALSE}
-allmodels3 <- data.frame(param=integer(), exper=character(), samp=character(), ec50val=double(), ec50top=double(), ec50bot=double(), gof=double(), bottom=double(), top=double(), xmid=double(), scal=double(), s=double(), stringsAsFactors = FALSE)
+allmodels3 <- data.frame(param=integer(), exper=character(), samp=character(), ec50val=double(), ec50top=double(), ec50bot=double(), gof=double(), bottom=double(), top=double(), xmid=double(), scal=double(), s=double(), AUC=double(), stringsAsFactors = FALSE)
 index <- 1
-for(l in 5){
+for(l in 3:5){
   for(i in 1:length(splitExps)){
     for(k in 1:length(splitExps[[i]])){
       for(t in 1:length(splitExps[[i]][[k]][,1])){
              try(asdf <- nplr(x=as.numeric(unlist(concentrations[[i]][[k]][t,])), y=as.numeric(unlist(splitExps[[i]][[k]][t,])), useLog = TRUE, npars = l,silent = TRUE, LPweight = 0), silent = TRUE)
-      allmodels3[index,] <- c(l, names(splitExps)[[i]], names(splitExps[[i]])[[k]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[3]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[4]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[2]], asdf@goodness$gof, asdf@pars$bottom, asdf@pars$top, asdf@pars$xmid, asdf@pars$scal, asdf@pars$s)
+      allmodels3[index,] <- c(l, names(splitExps)[[i]], names(splitExps[[i]])[[k]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[3]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[4]], getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[2]], asdf@goodness$gof, asdf@pars$bottom, asdf@pars$top, asdf@pars$xmid, asdf@pars$scal, asdf@pars$s, asdf@AUC$trapezoid)
       index=index+1
       }
     }
@@ -167,7 +203,7 @@ if(length(unlist(avdexp$Samples))>length(unique(unlist(avdexp$Samples)))){
                  datatype = "Gaussian", nboot=1000, npermut=1000)
   btwcons
   par(mar=c(10,10,10,10))
-  plot(btwcons, main = paste(paste(chaos,"treated samples"), "10 dilutions ", sep="\n"))
+  plot(btwcons, main = paste(paste(chaos,"treated samples"), paste(length(conce), " dilutions"), sep="\n"), xlim=c(0,1), cex.main=2, cex.lab=1.5, cex.axis=1.5)
 }else{
   print("There are not enough repetitions for each sample to calculate repeatability")
 }
@@ -176,11 +212,11 @@ if(length(unlist(avdexp$Samples))>length(unique(unlist(avdexp$Samples)))){
 ```
 
 
-```{r echo = T, warning=FALSE, message=FALSE}
+```{r echo = T, warning=FALSE, message=FALSE, fig.height = 8, fig.width = 8}
 #dataframe with all 11 changes of OD values
-ticvals <- seq(-0.1, 0.1, 0.02)
+ticvals <- seq(-0.2, 0.2, 0.04)
 splitExps2 <- splitExps
-allmodels2 <- data.frame(param=integer(), exper=character(), samp=character(), concen=double(), ec50val=double(), stringsAsFactors = FALSE)
+allmodels2 <- data.frame(param=integer(), exper=character(), samp=character(), concen=double(), ec50val=double(), AUC=double(), stringsAsFactors = FALSE)
 index <- 1
 vectormodel2 <- vector(mode="list")
 for(l in 3:5){
@@ -200,7 +236,7 @@ for(l in 3:5){
                        useLog = TRUE, npars = l,silent = TRUE, LPweight = 0), silent = TRUE)
           vectormodel2[[l-2]][[i]][[k]][[h]][[z]] <- asdf
           allmodels2[index,] <- c(l, names(splitExps)[[i]], names(splitExps[[i]])[[k]], conce[[h]],
-                                  getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[3]])
+                                  getEstimates(asdf, targets = (max(asdf@yCurve)+min(asdf@yCurve))/2)[[3]], asdf@AUC$trapezoid)
           index=index+1
           #change splitexps2 to the original
           splitExps2 <- splitExps
@@ -211,31 +247,39 @@ for(l in 3:5){
 }
 changetoanalyze <- subset(allmodels2, param==5) #only 5 parametric
 #try spliting by concentration and getting overall SD, plot it
-changetoanalyze <- changetoanalyze[,-1]
+changetoanalyze <- changetoanalyze[,-1]#remove param
 par(mar=c(10,10,10,10))
 
 boxplot(as.numeric(changetoanalyze$ec50val)~as.numeric(changetoanalyze$concen), xlab = paste(chaos, " Molarity"), ylab = "Avidity index", main=paste("Effect of OD", "variation", sep="\n")) #improve
 
+
+#choose a good model for plotting in vectormodel2 array
+
 par(mar=c(10,10,10,10))
-overlay(modelList = vectormodel2[[3]][[2]][[2]][[3]],
+overlay(modelList = vectormodel2[[3]][[1]][[2]][[3]],
         showLegend = FALSE,
           ylab="proportion of OD", 
-          xlab=paste("log[", chaos, "]"), main=paste("Fitted 5-plm models", paste(length(conce), " dil of GuHCl"), sep="\n"))
+          xlab=paste("log[", chaos, "]"), main=paste("Fitted 5-plm models", paste(length(conce), " dil of ", chaos), sep="\n"))
 
 ```
 
 Checking SD for EC50:
 
-```{r}
+```{r echo = T, warning=FALSE, message=FALSE, fig.height = 8, fig.width = 8}
 stdevConec50 <- vector(mode="list", length=length(conce))
+stdevAUCnplr <- vector(mode="list", length=length(conce))
 for(g in 1:length(conce)){
   temp1 <- subset(changetoanalyze, concen==conce[[g]])
-  stdevConec50[[g]] <- sd(as.numeric(unlist(temp1[,4])))
+  stdevConec50[[g]] <- sd(as.numeric(unlist(temp1[,4])), na.rm=TRUE)/sqrt(length(as.numeric(unlist(temp1[,4]))[!is.na(as.numeric(unlist(temp1[,4])))]))
+  stdevAUCnplr[[g]] <- sd(as.numeric(unlist(temp1[,5])), na.rm=TRUE)/sqrt(length(as.numeric(unlist(temp1[,5]))[!is.na(as.numeric(unlist(temp1[,5])))]))
 }
 
 par(mar=c(10,10,10,10))
 boxplot(stdevConec50, names=as.character(conce),
-        main=paste("Avidity index", "dispersion", sep="\n"), ylab="Standard deviation", xlab=paste(chaos, " concentrations"))
+        main=paste("Avidity index", "dispersion", sep="\n"), ylab="Standard error of the mean", xlab=paste(chaos, " concentrations"), cex.main=2, cex.lab=1.5, cex.axis=0.9)
+
+boxplot(stdevAUCnplr, names=as.character(conce),
+        main=paste("AUC nplr", "dispersion", sep="\n"), ylab="Standard error of the mean", xlab=paste(chaos, " concentrations"), cex.main=2, cex.lab=1.5, cex.axis=0.9)
 
 ```
 
