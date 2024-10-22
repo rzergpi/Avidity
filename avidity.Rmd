@@ -22,17 +22,15 @@ if (!require('nplr')) install.packages("nplr")
 if (!require('rptR')) install.packages("rptR")
 if (!require('reticulate')) install.packages("reticulate")
 if (!require('Bolstad2')) install.packages("Bolstad2")
-#if (!require('ggplot2')) install.packages("ggplot2")
 library(writexl)
 library(nplr)
 library(rptR)
-#library(ggplot2)
 library(tools)
 library(reticulate)
 library(Bolstad2)
 ```
 
-
+Loading the csv file
 ```{r echo = T, warning=FALSE, message=FALSE}
 
 
@@ -119,12 +117,15 @@ for(l in 3:5){
 par(mar=c(8,8,8,8))
 boxplot(as.numeric(subset(allmodels, param==3)$ec50val)~subset(allmodels, param==3)$exper, main="Avidity index, 3 plm", xlab = "Groups", ylab = "Avidity index")
 boxplot(as.numeric(subset(allmodels, param==4)$ec50val)~subset(allmodels, param==4)$exper, main="Avidity index, 4 plm", xlab = "Groups", ylab = "Avidity index")
-boxplot(as.numeric(subset(allmodels, param==5)$ec50val)~subset(allmodels, param==5)$exper, main=chaos, xlab = "Groups", ylab = "Avidity index")
+boxplot(as.numeric(subset(allmodels, param==5)$ec50val)~subset(allmodels, param==5)$exper, main="Avidity index, 5 plm", xlab = "Groups", ylab = "Avidity index")
 
 
 
 
 ```
+
+
+
 Print table with EC50
 
 ```{r}
@@ -154,26 +155,6 @@ hist(as.numeric(subset(allmodels, param==5)$gof), main = paste("5 plm ", chaos),
 ```
 
 
-
-Plotting EC50 over the models (blue triangular shape)
-
-```{r}
-#use overlay, put all models in a list or vector
-#use unlist
-#divide by experiment, all 5-param
-
-```
-
-print EC50s in table and column versions
-
-
-```{r}
-#just print the data frame, some values (Ec50, sample, exp, etc)
-
-
-```
-
-I beieve you are not properly measuring repeatability
 
 
 Repeatability between sample replicates (same conditions) only for 5 parametric nplr
@@ -282,5 +263,6 @@ boxplot(stdevAUCnplr, names=as.character(conce),
         main=paste("AUC nplr", "dispersion", sep="\n"), ylab="Standard error of the mean", xlab=paste(chaos, " concentrations"), cex.main=2, cex.lab=1.5, cex.axis=0.9)
 
 ```
+
 
 
